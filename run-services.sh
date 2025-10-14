@@ -36,23 +36,39 @@ build_service() {
     return 1
   fi
 
-  echo "[build] $name"
+  echo "[check] $name"
   (
     cd "$svc_dir"
-    npm run build >/dev/null 2>&1 || {
-      echo "[build error] $name failed to build" >&2
+    # Check if package.json exists and has required scripts
+    if [ ! -f "package.json" ]; then
+      echo "[warning] $name has no package.json" >&2
       return 1
-    }
+    fi
+    
+    # Check if dev script exists (required for Next.js services)
+    if ! npm run | grep -q "dev$"; then
+      echo "[warning] $name has no dev script" >&2
+      return 1
+    fi
+    
+    echo "[ready] $name"
   )
 }
 
 build_all_services() {
-  echo "Building all services..."
+  echo "Checking all services..."
+  local failed_services=""
   echo "$SERVICES" | while read -r name port; do
     [ -z "${name:-}" ] && continue
-    build_service "$name" || echo "[warning] $name build failed, continuing..."
+    if ! build_service "$name"; then
+      failed_services="$failed_services $name"
+    fi
   done
-  echo "Build phase completed."
+  
+  if [ -n "$failed_services" ]; then
+    echo "[warning] Some services had issues:$failed_services"
+  fi
+  echo "Check phase completed."
 }
 
 start_service() {
@@ -129,6 +145,22 @@ stop_service() {
   rm -f "$pid_file" 2>/dev/null || true
 }
 
+wait_for_service() {
+  local name="$1"
+  local port="$2"
+  local timeout=30
+  local count=0
+  
+  while [ $count -lt $timeout ]; do
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    count=$((count + 1))
+  done
+  return 1
+}
+
 status_services() {
   echo "\nSummary:"
   echo "$SERVICES" | while read -r name port; do
@@ -152,6 +184,17 @@ case "$cmd" in
       [ -z "${name:-}" ] && continue
       start_service "$name" "$port"
     done
+    
+    echo "Waiting for services to be ready..."
+    echo "$SERVICES" | while read -r name port; do
+      [ -z "${name:-}" ] && continue
+      if wait_for_service "$name" "$port"; then
+        echo " - $name ready on http://localhost:$port"
+      else
+        echo " - $name failed to start (check logs/services/$name.log)"
+      fi
+    done
+    
     status_services
     ;;
   stop)
