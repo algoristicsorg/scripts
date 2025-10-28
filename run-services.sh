@@ -21,6 +21,7 @@ dashboard-service 4008
 public-service 4007
 login-service 4009
 logging-service 4010
+learning-paths-service 4011
 "
 
 log_dir="$ROOT_DIR/logs/services"
