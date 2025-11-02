@@ -17,8 +17,8 @@ course-service 4003
 assessment-service 4004
 analytics-service 4005
 storage-service 4006
-dashboard-service 4008
-public-service 4007
+dashboard-service 4007
+public-service 4008
 login-service 4009
 logging-service 4010
 learning-paths-service 4011
@@ -30,7 +30,7 @@ mkdir -p "$log_dir" "$pid_dir"
 
 build_service() {
   local name="$1"
-  local svc_dir="$ROOT_DIR/services/$name"
+  local svc_dir="$ROOT_DIR/$name"
 
   if [ ! -d "$svc_dir" ]; then
     echo "[error] $name directory not found at $svc_dir" >&2
@@ -75,7 +75,7 @@ build_all_services() {
 start_service() {
   local name="$1"
   local port="$2"
-  local svc_dir="$ROOT_DIR/services/$name"
+  local svc_dir="$ROOT_DIR/$name"
   local log_file="$log_dir/$name.log"
   local pid_file="$pid_dir/$name.dev.pid"
 
