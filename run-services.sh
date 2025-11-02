@@ -11,14 +11,14 @@ JWT_SECRET_VALUE="${JWT_SECRET:-dev_jwt_secret_change_me}"
 # List of services and ports (portable for macOS bash 3.x)
 SERVICES="
 docs-service 4000
-user-service 4001
-organization-service 4002
+organization-service 4001
+user-service 4002
 course-service 4003
 assessment-service 4004
-analytics-service 4005
+public-service 4005
 storage-service 4006
 dashboard-service 4007
-public-service 4008
+analytics-service 4008
 login-service 4009
 logging-service 4010
 learning-paths-service 4011
@@ -163,17 +163,55 @@ wait_for_service() {
 }
 
 status_services() {
-  echo "\nSummary:"
+  echo "\n🚀 LMS Services Status:"
   echo "$SERVICES" | while read -r name port; do
     [ -z "${name:-}" ] && continue
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-      echo " - $name listening on http://localhost:$port"
+      case "$name" in
+        "docs-service")
+          echo " ✅ $name - Swagger UI & API Docs: http://localhost:$port/api/docs"
+          ;;
+        "organization-service")
+          echo " ✅ $name - Organizations API: http://localhost:$port/api/organizations"
+          ;;
+        "user-service")
+          echo " ✅ $name - Users API: http://localhost:$port/api/users"
+          ;;
+        "course-service")
+          echo " ✅ $name - Courses API: http://localhost:$port/api/courses"
+          ;;
+        "assessment-service")
+          echo " ✅ $name - Assessments API: http://localhost:$port/api/assessments"
+          ;;
+        "public-service")
+          echo " ✅ $name - Public APIs: http://localhost:$port/api/courses"
+          ;;
+        "analytics-service")
+          echo " ✅ $name - Analytics APIs: http://localhost:$port/api/overview"
+          ;;
+        "login-service")
+          echo " ✅ $name - Authentication API: http://localhost:$port/api/auth/login"
+          ;;
+        *)
+          echo " ✅ $name - Service API: http://localhost:$port"
+          ;;
+      esac
     else
-      echo " - $name not listening (check logs/services/$name.log)"
+      echo " ❌ $name not listening (check logs/services/$name.log)"
     fi
   done
-  echo "\nLogs: $log_dir"
-  echo "PIDs:  $pid_dir"
+  
+  echo "\n📊 Quick Access:"
+  if lsof -nP -iTCP:4000 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo " 🌐 Swagger UI: http://localhost:4000/api/docs"
+  fi
+  if lsof -nP -iTCP:4009 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo " 🔐 Test Login: curl -X POST http://localhost:4009/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin123\"}'"
+  fi
+  
+  echo "\n📁 Debug Info:"
+  echo " 📋 Logs: $log_dir"
+  echo " 🔧 PIDs:  $pid_dir"
 }
 
 cmd="${1:-start}"
@@ -186,13 +224,23 @@ case "$cmd" in
       start_service "$name" "$port"
     done
     
-    echo "Waiting for services to be ready..."
+    echo "⏳ Waiting for services to be ready..."
     echo "$SERVICES" | while read -r name port; do
       [ -z "${name:-}" ] && continue
       if wait_for_service "$name" "$port"; then
-        echo " - $name ready on http://localhost:$port"
+        case "$name" in
+          "docs-service")
+            echo " ✅ $name ready - Swagger UI: http://localhost:$port/api/docs"
+            ;;
+          "login-service")
+            echo " ✅ $name ready - Auth API: http://localhost:$port/api/auth/login"
+            ;;
+          *)
+            echo " ✅ $name ready on http://localhost:$port"
+            ;;
+        esac
       else
-        echo " - $name failed to start (check logs/services/$name.log)"
+        echo " ❌ $name failed to start (check logs/services/$name.log)"
       fi
     done
     
