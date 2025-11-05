@@ -11,14 +11,14 @@ JWT_SECRET_VALUE="${JWT_SECRET:-dev_jwt_secret_change_me}"
 # List of services and ports (portable for macOS bash 3.x)
 SERVICES="
 docs-service 4000
-organization-service 4001
-user-service 4002
+user-service 4001
+organization-service 4002
 course-service 4003
 assessment-service 4004
-public-service 4005
+analytics-service 4005
 storage-service 4006
 dashboard-service 4007
-analytics-service 4008
+public-service 4008
 login-service 4009
 logging-service 4010
 learning-paths-service 4011
