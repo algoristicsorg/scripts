@@ -416,3 +416,33 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Next.js build artifacts
+.next/
+out/
+
+# Node.js
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Cache directories
+.cache/
+.temp/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE files
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+
