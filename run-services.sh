@@ -22,7 +22,15 @@ public-service 4008
 login-service 4009
 logging-service 4010
 learning-paths-service 4011
+rubric-service 4012
+assignment-service 4013
+notification-service 4014
+code-editor-service 4015
 "
+
+# Python-based service (runs separately via run.sh / Podman)
+CEE_SERVICE="code-execution-engine"
+CEE_PORT=8000
 
 log_dir="$ROOT_DIR/logs/services"
 pid_dir="$ROOT_DIR/tmp/pids"
@@ -192,6 +200,18 @@ status_services() {
         "login-service")
           echo " ✅ $name - Authentication API: http://localhost:$port/api/auth/login"
           ;;
+        "rubric-service")
+          echo " ✅ $name - Rubrics API: http://localhost:$port/api/rubrics"
+          ;;
+        "assignment-service")
+          echo " ✅ $name - Assignments API: http://localhost:$port/api/assignments"
+          ;;
+        "notification-service")
+          echo " ✅ $name - Notifications API: http://localhost:$port/api/notifications"
+          ;;
+        "code-editor-service")
+          echo " ✅ $name - Code Editor API: http://localhost:$port/api/code-editor"
+          ;;
         *)
           echo " ✅ $name - Service API: http://localhost:$port"
           ;;
@@ -200,7 +220,14 @@ status_services() {
       echo " ❌ $name not listening (check logs/services/$name.log)"
     fi
   done
-  
+
+  # Check code-execution-engine separately (Python service)
+  if lsof -nP -iTCP:"$CEE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo " ✅ $CEE_SERVICE - Execution API: http://localhost:$CEE_PORT/docs"
+  else
+    echo " ❌ $CEE_SERVICE not listening on :$CEE_PORT (start separately via run.sh)"
+  fi
+
   echo "\n📊 Quick Access:"
   if lsof -nP -iTCP:4000 -sTCP:LISTEN >/dev/null 2>&1; then
     echo " 🌐 Swagger UI: http://localhost:4000/api/docs"
@@ -209,9 +236,63 @@ status_services() {
     echo " 🔐 Test Login: curl -X POST http://localhost:4009/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin123\"}'"
   fi
   
+  if lsof -nP -iTCP:"$CEE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo " 🖥️  Code Execution: http://localhost:$CEE_PORT/docs"
+  fi
+
   echo "\n📁 Debug Info:"
   echo " 📋 Logs: $log_dir"
   echo " 🔧 PIDs:  $pid_dir"
+}
+
+start_cee() {
+  local svc_dir="$ROOT_DIR/$CEE_SERVICE"
+  local log_file="$log_dir/$CEE_SERVICE.log"
+  local pid_file="$pid_dir/$CEE_SERVICE.dev.pid"
+
+  if lsof -nP -iTCP:"$CEE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "[skip] $CEE_SERVICE: port $CEE_PORT already in use"
+    return 0
+  fi
+
+  if [ ! -d "$svc_dir" ]; then
+    echo "[warn] $CEE_SERVICE directory not found — skipping (runs via Podman/Docker)"
+    return 0
+  fi
+
+  # Check if run.sh exists (preferred start method)
+  if [ -f "$svc_dir/run.sh" ]; then
+    echo "[start] $CEE_SERVICE on :$CEE_PORT (via run.sh)"
+    (
+      cd "$svc_dir"
+      bash run.sh dev >>"$log_file" 2>&1 &
+      echo $! >"$pid_file"
+    )
+  else
+    echo "[warn] $CEE_SERVICE has no run.sh — start manually via 'make dev' or Docker"
+  fi
+}
+
+stop_cee() {
+  local pid_file="$pid_dir/$CEE_SERVICE.dev.pid"
+
+  if [ -f "$pid_file" ]; then
+    local pid
+    pid="$(cat "$pid_file" 2>/dev/null || echo "")"
+    if [ -n "${pid}" ] && kill -0 "$pid" >/dev/null 2>&1; then
+      echo "[stop] $CEE_SERVICE (pid $pid)"
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  local pids
+  pids="$(lsof -t -nP -iTCP:"$CEE_PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "${pids}" ]; then
+    echo "[stop] $CEE_SERVICE by port :$CEE_PORT (pids: $pids)"
+    echo "$pids" | xargs -I {} kill {} >/dev/null 2>&1 || true
+  fi
+
+  rm -f "$pid_file" 2>/dev/null || true
 }
 
 cmd="${1:-start}"
@@ -223,7 +304,10 @@ case "$cmd" in
       [ -z "${name:-}" ] && continue
       start_service "$name" "$port"
     done
-    
+
+    # Start code-execution-engine (Python service)
+    start_cee
+
     echo "⏳ Waiting for services to be ready..."
     echo "$SERVICES" | while read -r name port; do
       [ -z "${name:-}" ] && continue
@@ -235,6 +319,18 @@ case "$cmd" in
           "login-service")
             echo " ✅ $name ready - Auth API: http://localhost:$port/api/auth/login"
             ;;
+          "rubric-service")
+            echo " ✅ $name ready - Rubrics API: http://localhost:$port/api/rubrics"
+            ;;
+          "assignment-service")
+            echo " ✅ $name ready - Assignments API: http://localhost:$port/api/assignments"
+            ;;
+          "notification-service")
+            echo " ✅ $name ready - Notifications API: http://localhost:$port/api/notifications"
+            ;;
+          "code-editor-service")
+            echo " ✅ $name ready - Code Editor API: http://localhost:$port/api/code-editor"
+            ;;
           *)
             echo " ✅ $name ready on http://localhost:$port"
             ;;
@@ -243,7 +339,14 @@ case "$cmd" in
         echo " ❌ $name failed to start (check logs/services/$name.log)"
       fi
     done
-    
+
+    # Check code-execution-engine readiness
+    if wait_for_service "$CEE_SERVICE" "$CEE_PORT"; then
+      echo " ✅ $CEE_SERVICE ready - API docs: http://localhost:$CEE_PORT/docs"
+    else
+      echo " ⚠️  $CEE_SERVICE not ready (may need manual start via Podman/Docker)"
+    fi
+
     status_services
     ;;
   stop)
@@ -252,6 +355,7 @@ case "$cmd" in
       [ -z "${name:-}" ] && continue
       stop_service "$name" "$port"
     done
+    stop_cee
     status_services
     ;;
   build)
