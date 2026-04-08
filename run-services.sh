@@ -26,6 +26,7 @@ rubric-service 4012
 assignment-service 4013
 notification-service 4014
 code-editor-service 4015
+proctoring-service 4016
 "
 
 # Python-based service (runs separately via run.sh / Podman)
@@ -296,17 +297,49 @@ stop_cee() {
 }
 
 cmd="${1:-start}"
+service_name="${2:-}"
+
 case "$cmd" in
   start)
-    build_all_services
-    echo "Starting LMS services..."
-    echo "$SERVICES" | while read -r name port; do
-      [ -z "${name:-}" ] && continue
-      start_service "$name" "$port"
-    done
+    if [ -n "$service_name" ]; then
+      # Start specific service
+      port=$(echo "$SERVICES" | grep "^$service_name " | awk '{print $2}')
+      if [ -n "$port" ]; then
+        echo "Starting $service_name..."
+        build_service "$service_name"
+        start_service "$service_name" "$port"
+        if wait_for_service "$service_name" "$port"; then
+          echo " ✅ $service_name ready on http://localhost:$port"
+        else
+          echo " ❌ $service_name failed to start (check logs/services/$service_name.log)"
+        fi
+      elif [ "$service_name" = "$CEE_SERVICE" ]; then
+        echo "Starting $CEE_SERVICE..."
+        start_cee
+        if wait_for_service "$CEE_SERVICE" "$CEE_PORT"; then
+          echo " ✅ $CEE_SERVICE ready - API docs: http://localhost:$CEE_PORT/docs"
+        else
+          echo " ⚠️  $CEE_SERVICE not ready (may need manual start via Podman/Docker)"
+        fi
+      else
+        echo "[error] Unknown service: $service_name" >&2
+        echo "Available services:"
+        echo "$SERVICES" | awk '{if(NF) print "  - " $1}'
+        echo "  - $CEE_SERVICE"
+        exit 1
+      fi
+    else
+      # Start all services
+      build_all_services
+      echo "Starting LMS services..."
+      echo "$SERVICES" | while read -r name port; do
+        [ -z "${name:-}" ] && continue
+        start_service "$name" "$port"
+      done
 
-    # Start code-execution-engine (Python service)
-    start_cee
+      # Start code-execution-engine (Python service)
+      start_cee
+    fi
 
     echo "⏳ Waiting for services to be ready..."
     echo "$SERVICES" | while read -r name port; do
@@ -350,26 +383,69 @@ case "$cmd" in
     status_services
     ;;
   stop)
-    echo "Stopping LMS services..."
-    echo "$SERVICES" | while read -r name port; do
-      [ -z "${name:-}" ] && continue
-      stop_service "$name" "$port"
-    done
-    stop_cee
+    if [ -n "$service_name" ]; then
+      # Stop specific service
+      port=$(echo "$SERVICES" | grep "^$service_name " | awk '{print $2}')
+      if [ -n "$port" ]; then
+        echo "Stopping $service_name..."
+        stop_service "$service_name" "$port"
+        echo " ✅ $service_name stopped"
+      elif [ "$service_name" = "$CEE_SERVICE" ]; then
+        echo "Stopping $CEE_SERVICE..."
+        stop_cee
+        echo " ✅ $CEE_SERVICE stopped"
+      else
+        echo "[error] Unknown service: $service_name" >&2
+        echo "Available services:"
+        echo "$SERVICES" | awk '{if(NF) print "  - " $1}'
+        echo "  - $CEE_SERVICE"
+        exit 1
+      fi
+    else
+      # Stop all services
+      echo "Stopping LMS services..."
+      echo "$SERVICES" | while read -r name port; do
+        [ -z "${name:-}" ] && continue
+        stop_service "$name" "$port"
+      done
+      stop_cee
+    fi
     status_services
     ;;
   build)
     build_all_services
     ;;
   restart)
-    "$0" stop
-    "$0" start
+    if [ -n "$service_name" ]; then
+      "$0" stop "$service_name"
+      "$0" start "$service_name"
+    else
+      "$0" stop
+      "$0" start
+    fi
     ;;
   status)
     status_services
     ;;
   *)
-    echo "Usage: $(basename "$0") {start|stop|restart|build|status}" >&2
+    echo "Usage: $(basename "$0") {start|stop|restart|build|status} [service-name]" >&2
+    echo "" >&2
+    echo "Commands:" >&2
+    echo "  start [service]   - Start all services or a specific service" >&2
+    echo "  stop [service]    - Stop all services or a specific service" >&2
+    echo "  restart [service] - Restart all services or a specific service" >&2
+    echo "  build             - Check and build all services" >&2
+    echo "  status            - Show status of all services" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  $(basename "$0") start              # Start all services" >&2
+    echo "  $(basename "$0") start user-service # Start only user-service" >&2
+    echo "  $(basename "$0") stop user-service  # Stop only user-service" >&2
+    echo "  $(basename "$0") restart login-service # Restart login-service" >&2
+    echo "" >&2
+    echo "Available services:" >&2
+    echo "$SERVICES" | awk '{if(NF) print "  - " $1}' >&2
+    echo "  - $CEE_SERVICE" >&2
     exit 1
     ;;
 esac
