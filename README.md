@@ -7,7 +7,6 @@ Local dev workstation scripts for managing LMS services, builds, and database se
 - Node.js v18+
 - npm
 - PostgreSQL client (psql) — for DB scripts
-- Docker or Podman — for code-execution-engine only
 - macOS or Linux (bash 3.x+ compatible)
 
 ## Service Port Map
@@ -30,7 +29,6 @@ Local dev workstation scripts for managing LMS services, builds, and database se
 | assignment-service | 4013 | Next.js |
 | notification-service | 4014 | Next.js |
 | code-editor-service | 4015 | Next.js |
-| code-execution-engine | 8000 | Python (Flask/Uvicorn) |
 | algoristics (frontend) | 8080 | Vite + React |
 
 ---
@@ -62,7 +60,6 @@ Injects `DATABASE_URL`, `JWT_SECRET`, and MinIO config into each service automat
 ### What it does
 
 - Starts each Next.js service via `npm run dev` with the correct env vars.
-- Starts code-execution-engine via its `run.sh` script (if present).
 - Tracks PIDs in `tmp/pids/` and logs output to `logs/services/<service>.log`.
 - On stop, sends SIGTERM first, waits 3 seconds, then SIGKILL if the process is still alive.
 - Status output shows each service's primary endpoint URL.
@@ -89,7 +86,7 @@ Build one, many, or all services. Supports sequential and parallel builds with o
 ### Usage
 
 ```bash
-# Build everything (all backends + frontend + code-execution-engine)
+# Build everything (all backends + frontend)
 ./build-services.sh
 
 # Build a single service
@@ -104,8 +101,6 @@ Build one, many, or all services. Supports sequential and parallel builds with o
 # Build frontend only
 ./build-services.sh --frontend
 
-# Build code-execution-engine only
-./build-services.sh --cee
 
 # Install deps before building
 ./build-services.sh --install user-service
@@ -129,7 +124,6 @@ Build one, many, or all services. Supports sequential and parallel builds with o
 | `--parallel` | Build all targets concurrently (faster, mixed log output) |
 | `--backend` | Build all 16 Next.js backend services |
 | `--frontend` | Build the algoristics frontend (Vite) |
-| `--cee` | Build code-execution-engine (Docker/Podman) |
 | `--help` | Show usage help |
 
 Flags can be combined freely. When no flags or service names are given, it builds everything.
@@ -139,11 +133,6 @@ Flags can be combined freely. When no flags or service names are given, it build
 All build output is written to `logs/builds/<service>.build.log`.
 On failure, the summary points you to the exact log file.
 
-### Code-execution-engine
-
-This service is Python-based and builds via Makefile.
-The script auto-detects whether Podman or Docker is available and uses the right target.
-If neither is installed, it warns and skips — no crash.
 
 ---
 

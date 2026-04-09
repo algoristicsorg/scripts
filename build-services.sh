@@ -4,12 +4,11 @@
 # build-services.sh — Build one, many, or all LMS services
 #
 # Usage:
-#   ./build-services.sh                     Build ALL services (backend + frontend + CEE)
+#   ./build-services.sh                     Build ALL services (backend + frontend)
 #   ./build-services.sh user-service        Build a single service
 #   ./build-services.sh user-service login-service   Build multiple services
 #   ./build-services.sh --backend           Build all backend services only
 #   ./build-services.sh --frontend          Build frontend (algoristics) only
-#   ./build-services.sh --cee              Build code-execution-engine only
 #   ./build-services.sh --install           Run npm install before building
 #   ./build-services.sh --clean             Remove .next/dist build artifacts before building
 #   ./build-services.sh --parallel          Build services in parallel (faster, noisier logs)
@@ -47,7 +46,6 @@ BACKEND_SERVICES=(
 )
 
 FRONTEND_SERVICE="algoristics"
-CEE_SERVICE="code-execution-engine"
 
 # ── Colors & Formatting ──────────────────────────────────────────────────────
 
@@ -76,7 +74,6 @@ DO_CLEAN=false
 DO_PARALLEL=false
 BUILD_BACKEND=false
 BUILD_FRONTEND=false
-BUILD_CEE=false
 SPECIFIC_SERVICES=()
 
 for arg in "$@"; do
@@ -86,7 +83,6 @@ for arg in "$@"; do
     --parallel)  DO_PARALLEL=true ;;
     --backend)   BUILD_BACKEND=true ;;
     --frontend)  BUILD_FRONTEND=true ;;
-    --cee)       BUILD_CEE=true ;;
     --help|-h)
       echo "Usage: $(basename "$0") [flags] [service-name ...]"
       echo ""
@@ -98,7 +94,6 @@ for arg in "$@"; do
       echo "  --parallel    Build services concurrently (faster, mixed log output)"
       echo "  --backend     Build all backend services (Next.js)"
       echo "  --frontend    Build frontend only (algoristics / Vite)"
-      echo "  --cee         Build code-execution-engine only (Docker/Podman)"
       echo "  --help, -h    Show this help message"
       echo ""
       echo "Examples:"
@@ -125,7 +120,7 @@ TARGETS=()
 
 if [ ${#SPECIFIC_SERVICES[@]} -gt 0 ]; then
   # User specified exact services — validate each one
-  ALL_KNOWN=("${BACKEND_SERVICES[@]}" "$FRONTEND_SERVICE" "$CEE_SERVICE")
+  ALL_KNOWN=("${BACKEND_SERVICES[@]}" "$FRONTEND_SERVICE")
   for svc in "${SPECIFIC_SERVICES[@]}"; do
     found=false
     for known in "${ALL_KNOWN[@]}"; do
@@ -142,7 +137,7 @@ if [ ${#SPECIFIC_SERVICES[@]} -gt 0 ]; then
       exit 1
     fi
   done
-elif [ "$BUILD_BACKEND" = true ] || [ "$BUILD_FRONTEND" = true ] || [ "$BUILD_CEE" = true ]; then
+elif [ "$BUILD_BACKEND" = true ] || [ "$BUILD_FRONTEND" = true ]; then
   # User specified category flags
   if [ "$BUILD_BACKEND" = true ]; then
     TARGETS+=("${BACKEND_SERVICES[@]}")
@@ -150,14 +145,10 @@ elif [ "$BUILD_BACKEND" = true ] || [ "$BUILD_FRONTEND" = true ] || [ "$BUILD_CE
   if [ "$BUILD_FRONTEND" = true ]; then
     TARGETS+=("$FRONTEND_SERVICE")
   fi
-  if [ "$BUILD_CEE" = true ]; then
-    TARGETS+=("$CEE_SERVICE")
-  fi
 else
   # No args — build everything
   TARGETS+=("${BACKEND_SERVICES[@]}")
   TARGETS+=("$FRONTEND_SERVICE")
-  TARGETS+=("$CEE_SERVICE")
 fi
 
 # ── Build Functions ──────────────────────────────────────────────────────────
@@ -228,53 +219,6 @@ build_node_service() {
   )
 }
 
-build_cee() {
-  local svc_dir="$ROOT_DIR/$CEE_SERVICE"
-  local log_file="$BUILD_LOG_DIR/$CEE_SERVICE.build.log"
-  local start_time
-  start_time=$(date +%s)
-
-  if [ ! -d "$svc_dir" ]; then
-    log_err "$CEE_SERVICE — directory not found"
-    return 1
-  fi
-
-  log_info "$CEE_SERVICE — building (Docker/Podman)..."
-
-  (
-    cd "$svc_dir"
-
-    # Detect build tool: prefer podman, fall back to docker, then make
-    if command -v podman >/dev/null 2>&1; then
-      log_info "$CEE_SERVICE — using Podman"
-      if make build-local >>"$log_file" 2>&1; then
-        local end_time
-        end_time=$(date +%s)
-        local duration=$((end_time - start_time))
-        log_ok "$CEE_SERVICE — built in ${duration}s (Podman)"
-        return 0
-      else
-        log_err "$CEE_SERVICE — Podman build failed (see $log_file)"
-        return 1
-      fi
-    elif command -v docker >/dev/null 2>&1; then
-      log_info "$CEE_SERVICE — using Docker"
-      if make build >>"$log_file" 2>&1; then
-        local end_time
-        end_time=$(date +%s)
-        local duration=$((end_time - start_time))
-        log_ok "$CEE_SERVICE — built in ${duration}s (Docker)"
-        return 0
-      else
-        log_err "$CEE_SERVICE — Docker build failed (see $log_file)"
-        return 1
-      fi
-    else
-      log_warn "$CEE_SERVICE — neither Docker nor Podman found, skipping"
-      return 0
-    fi
-  )
-}
 
 # ── Execute Builds ───────────────────────────────────────────────────────────
 
@@ -303,15 +247,9 @@ if [ "$DO_PARALLEL" = true ]; then
   PID_NAMES=()
 
   for svc in "${TARGETS[@]}"; do
-    if [ "$svc" = "$CEE_SERVICE" ]; then
-      build_cee &
-      PIDS+=($!)
-      PID_NAMES+=("$svc")
-    else
-      build_node_service "$svc" &
-      PIDS+=($!)
-      PID_NAMES+=("$svc")
-    fi
+    build_node_service "$svc" &
+    PIDS+=($!)
+    PID_NAMES+=("$svc")
   done
 
   # Wait for all and collect results
@@ -326,20 +264,11 @@ if [ "$DO_PARALLEL" = true ]; then
 else
   # ── Sequential Build ─────────────────────────────────────────────────────
   for svc in "${TARGETS[@]}"; do
-    if [ "$svc" = "$CEE_SERVICE" ]; then
-      if build_cee; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-      else
-        FAILED=$((FAILED + 1))
-        FAILED_LIST+=("$svc")
-      fi
+    if build_node_service "$svc"; then
+      SUCCEEDED=$((SUCCEEDED + 1))
     else
-      if build_node_service "$svc"; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-      else
-        FAILED=$((FAILED + 1))
-        FAILED_LIST+=("$svc")
-      fi
+      FAILED=$((FAILED + 1))
+      FAILED_LIST+=("$svc")
     fi
   done
 fi
