@@ -43,6 +43,7 @@ BACKEND_SERVICES=(
   notification-service
   code-editor-service
   proctoring-service
+  ai-service
 )
 
 FRONTEND_SERVICE="algoristics"
