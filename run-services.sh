@@ -27,6 +27,7 @@ assignment-service 4013
 notification-service 4014
 code-editor-service 4015
 proctoring-service 4016
+ai-service 4017
 "
 
 
@@ -210,6 +211,9 @@ status_services() {
         "code-editor-service")
           echo " ✅ $name - Code Editor API: http://localhost:$port/api/code-editor"
           ;;
+        "ai-service")
+          echo " ✅ $name - AI API: http://localhost:$port/api/ai"
+          ;;
         *)
           echo " ✅ $name - Service API: http://localhost:$port"
           ;;
@@ -292,6 +296,9 @@ case "$cmd" in
             ;;
           "code-editor-service")
             echo " ✅ $name ready - Code Editor API: http://localhost:$port/api/code-editor"
+            ;;
+          "ai-service")
+            echo " ✅ $name ready - AI API: http://localhost:$port/api/ai"
             ;;
           *)
             echo " ✅ $name ready on http://localhost:$port"
